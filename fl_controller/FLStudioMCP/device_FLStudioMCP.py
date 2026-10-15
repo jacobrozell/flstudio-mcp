@@ -734,7 +734,8 @@ def _h_plugin_set_param(p):
     val = float(p["value"])
     if not plugins.isValid(track, slot):
         raise _ClientError("no plugin at track %d slot %d" % (track, slot))
-    plugins.setParamValue(val, idx, track, slot)
+    # FL 2026 silently drops the write unless pickupMode is passed explicitly.
+    plugins.setParamValue(val, idx, track, slot, midi.PIM_None)
     return {
         "track": track, "slot": slot, "param": idx,
         "name": plugins.getParamName(idx, track, slot),
