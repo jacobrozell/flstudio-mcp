@@ -743,6 +743,39 @@ def _h_plugin_set_param(p):
     }
 
 
+def _plugin_write(method, val, idx, track, slot):
+    if method == "plain":
+        plugins.setParamValue(val, idx, track, slot)
+    elif method == "pim_none":
+        plugins.setParamValue(val, idx, track, slot, midi.PIM_None)
+    elif method == "pim_always":
+        plugins.setParamValue(val, idx, track, slot, midi.PIM_AlwaysPickup)
+    elif method == "rec":
+        event_id = mixer.getTrackPluginId(track, slot) + idx
+        general.processRECEvent(
+            event_id, int(round(val * midi.FromMIDI_Max)),
+            midi.REC_UpdateValue | midi.REC_UpdateControl | midi.REC_UpdatePlugLabel
+            | midi.REC_SetChanged | midi.REC_ShowHint)
+    else:
+        raise _ClientError("unknown write method %r" % method)
+
+
+def _h_plugin_write_probe(p):
+    """Write one param with one method; the caller reads back in a later call."""
+    track = int(p["track"])
+    slot = int(p["slot"])
+    idx = int(p["param"])
+    if not plugins.isValid(track, slot):
+        raise _ClientError("no plugin at track %d slot %d" % (track, slot))
+    try:
+        _plugin_write(p.get("method", "plain"), float(p["value"]), idx, track, slot)
+    except _ClientError:
+        raise
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+    return {"ok": True}
+
+
 # -- Routing / grouping / cleanup READ surface (Slice 1, read-only) ----------
 
 def _route_level(src, dst):
@@ -1087,6 +1120,7 @@ _HANDLERS = {
     "plugin_get_params": _h_plugin_get_params,
     "plugin_get_param": _h_plugin_get_param,
     "plugin_set_param": _h_plugin_set_param,
+    "plugin_write_probe": _h_plugin_write_probe,
     "mixer_get_routing": _h_mixer_get_routing,
     "mixer_get_routing_all": _h_mixer_get_routing_all,
     "channel_routing_summary": _h_channel_routing_summary,
