@@ -777,6 +777,55 @@ def _h_plugin_write_probe(p):
     return {"ok": True}
 
 
+# -- Slot / channel surface (FL 2026 API: per-slot mute + mix, send levels) ---
+
+def _slot_state(track, slot):
+    return {"track": track, "slot": slot,
+            "muted": bool(mixer.getPluginMuteState(track, slot)),
+            "mix": round(float(mixer.getPluginMixLevel(track, slot)), 4)}
+
+
+def _h_plugin_get_slot(p):
+    return _slot_state(int(p["track"]), int(p["slot"]))
+
+
+def _h_plugin_set_slot(p):
+    """Mute/unmute a mixer effect slot and/or set its mix knob (0..1)."""
+    track = int(p["track"])
+    slot = int(p["slot"])
+    if not plugins.isValid(track, slot):
+        raise _ClientError("no plugin at track %d slot %d" % (track, slot))
+    if "muted" in p:
+        mixer.setPluginMuteState(track, slot, bool(p["muted"]))
+    if "mix" in p:
+        mixer.setPluginMixLevel(track, slot, max(0.0, min(1.0, float(p["mix"]))))
+    return _slot_state(track, slot)
+
+
+def _h_mixer_set_route_level(p):
+    """Send level src -> dst (normalized, 0.8 ~ unity). Enables the send first."""
+    src = int(p["src"])
+    dst = int(p["dst"])
+    if not mixer.getRouteSendActive(src, dst):
+        mixer.setRouteTo(src, dst, 1)
+        mixer.afterRoutingChanged()
+    mixer.setRouteToLevel(src, dst, max(0.0, min(1.0, float(p["level"]))))
+    return {"src": src, "dst": dst, "level": round(mixer.getRouteToLevel(src, dst), 4)}
+
+
+def _h_channel_set_name(p):
+    c = int(p["channel"])
+    channels.setChannelName(c, str(p["name"]))
+    return {"channel": c, "name": channels.getChannelName(c)}
+
+
+def _h_channel_set_target(p):
+    """Route a channel to a mixer insert."""
+    c = int(p["channel"])
+    channels.setTargetFxTrack(c, int(p["track"]))
+    return {"channel": c, "target_fx_track": channels.getTargetFxTrack(c)}
+
+
 # -- Routing / grouping / cleanup READ surface (Slice 1, read-only) ----------
 
 def _route_level(src, dst):
@@ -1122,6 +1171,11 @@ _HANDLERS = {
     "plugin_get_param": _h_plugin_get_param,
     "plugin_set_param": _h_plugin_set_param,
     "plugin_write_probe": _h_plugin_write_probe,
+    "plugin_get_slot": _h_plugin_get_slot,
+    "plugin_set_slot": _h_plugin_set_slot,
+    "mixer_set_route_level": _h_mixer_set_route_level,
+    "channel_set_name": _h_channel_set_name,
+    "channel_set_target": _h_channel_set_target,
     "mixer_get_routing": _h_mixer_get_routing,
     "mixer_get_routing_all": _h_mixer_get_routing_all,
     "channel_routing_summary": _h_channel_routing_summary,
