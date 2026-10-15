@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import socket
 import threading
 import time
@@ -135,6 +136,22 @@ class FLBridge:
 
     # -- lifecycle -----------------------------------------------------------
 
+    def _should_create_virtual(self, out_match: Optional[str], in_match: Optional[str]) -> bool:
+        """Create CoreMIDI virtual ports when IAC/loopMIDI buses are missing.
+
+        On macOS, IAC setup is easy to miss; virtual ports owned by the daemon
+        appear in FL as Input ``FLStudioMCP RX`` / Output ``FLStudioMCP TX``.
+        Set ``FLSTUDIO_MCP_VIRTUAL=0`` to require pre-existing ports only.
+        ``FLSTUDIO_MCP_VIRTUAL=1`` forces virtual even if IAC ports exist.
+        """
+        flag = os.environ.get("FLSTUDIO_MCP_VIRTUAL", "auto").lower()
+        if flag in ("0", "false", "no"):
+            return False
+        if flag in ("1", "true", "yes"):
+            return True
+        # auto: virtual when either direction is missing (macOS default path)
+        return out_match is None or in_match is None
+
     def open(self) -> None:
         if self._opened:
             return
@@ -142,11 +159,31 @@ class FLBridge:
         in_names = mido.get_input_names()
         out_match = _find_port(self._port_to_fl_pattern, out_names)
         in_match = _find_port(self._port_from_fl_pattern, in_names)
+
+        if self._should_create_virtual(out_match, in_match):
+            # virtual=True: this process *owns* the endpoints. FL sees
+            # our virtual out as an Input named RX, and our virtual in as
+            # an Output named TX — matching Options > MIDI Settings docs.
+            logger.info(
+                "Creating virtual MIDI ports: to_fl=%r, from_fl=%r (platform=%s)",
+                self._port_to_fl_pattern,
+                self._port_from_fl_pattern,
+                platform.system(),
+            )
+            self._out_port = mido.open_output(self._port_to_fl_pattern, virtual=True)
+            self._in_port = mido.open_input(
+                self._port_from_fl_pattern, virtual=True, callback=self._on_midi
+            )
+            self._opened = True
+            return
+
         if out_match is None:
             raise FLPortMissing(
                 "No OUTPUT MIDI port matching %r. Available: %s. "
                 "Create the port in loopMIDI (Windows) or IAC Driver (macOS), "
-                "or set FLSTUDIO_MCP_PORT_TO_FL to an existing port name."
+                "or set FLSTUDIO_MCP_PORT_TO_FL to an existing port name. "
+                "On macOS you can also leave FLSTUDIO_MCP_VIRTUAL=auto (default) "
+                "so the daemon creates CoreMIDI virtual ports."
                 % (self._port_to_fl_pattern, out_names)
             )
         if in_match is None:

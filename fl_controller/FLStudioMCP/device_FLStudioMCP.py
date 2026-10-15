@@ -1011,8 +1011,12 @@ def _h_ensure_piano_roll(p):
         return out
     try:
         ui.showWindow(wid)
+        # The run-last-script hotkey only reaches the focused window; an open
+        # plugin editor would otherwise swallow it.
+        if hasattr(ui, "setFocused"):
+            ui.setFocused(wid)
         out["ok"] = True
-        out["method"] = "ui.showWindow(widPianoRoll)"
+        out["method"] = "ui.showWindow+setFocused(widPianoRoll)"
     except Exception as e:
         out["ok"] = False
         out["error"] = "showWindow: %s" % e

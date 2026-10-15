@@ -20,7 +20,7 @@ from __future__ import annotations
 from .pyscript_gen import write_apply_script, write_quantize_script
 
 
-def apply_notes(notes, mode="replace", trigger=True, quantize=None, snap_ends=False):
+def apply_notes(notes, mode="replace", trigger=True, quantize=None, snap_ends=False, script_name=None):
     """Write a pyscript into MCP_Apply.pyscript and (optionally) trigger FL.
 
     Normally writes the given notes. If ``quantize`` (grid in bars) is set, writes
@@ -32,7 +32,7 @@ def apply_notes(notes, mode="replace", trigger=True, quantize=None, snap_ends=Fa
         result = {"ok": True, "action": "quantize", "grid_bars": float(quantize),
                   "snap_ends": bool(snap_ends), "script": path}
     else:
-        path = write_apply_script(notes, mode)
+        path = write_apply_script(notes, mode, name=script_name)
         result = {"ok": True, "count": len(notes), "script": path, "mode": mode}
 
     if not trigger:
